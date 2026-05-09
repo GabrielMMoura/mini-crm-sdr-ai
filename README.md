@@ -4,6 +4,11 @@ CRM para equipes de SDR e pre-vendas com gestao de leads por workspace, funil SD
 
 O projeto foi desenvolvido como uma aplicacao SaaS multi-workspace, usando Supabase para autenticacao, banco PostgreSQL, RLS e Edge Functions. O frontend foi construido com React, TypeScript, Vite e TailwindCSS.
 
+## Deploy
+
+Aplicacao publicada:
+https://mini-crm-sdr-ai-vercel.vercel.app
+
 ## Tecnologias utilizadas
 
 ### Frontend
