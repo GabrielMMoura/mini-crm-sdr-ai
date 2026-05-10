@@ -6,6 +6,7 @@ import { Card } from '../components/ui/Card'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { Textarea } from '../components/ui/Textarea'
+import { Toast } from '../components/ui/Toast'
 import { useLeadCustomFields } from '../features/leads/hooks/useLeadCustomFields'
 import type {
   CreateLeadCustomFieldInput,
@@ -363,9 +364,15 @@ export function LeadFieldsPage() {
 
   return (
     <section className="space-y-6">
+      <Toast message={formError} onClose={() => setFormError(null)} type="error" />
+      <Toast message={feedbackMessage} onClose={() => setFeedbackMessage(null)} type="success" />
+
       <div>
         <h1 className="text-2xl font-semibold tracking-normal">Campos de Leads</h1>
-        <p className="mt-2 text-sm text-slate-600">Workspace atual: {currentWorkspace.name}</p>
+        <p className="mt-2 max-w-2xl text-sm text-slate-600">
+          Crie campos personalizados para enriquecer o cadastro e qualificação dos seus leads.
+        </p>
+        <p className="mt-1 text-sm text-slate-500">Workspace atual: {currentWorkspace.name}</p>
       </div>
 
       <Card className="space-y-5">
@@ -379,17 +386,13 @@ export function LeadFieldsPage() {
         </div>
 
         <form className="space-y-5" onSubmit={handleSubmit}>
-          <FieldForm form={form} isDisabled={isSubmitting} onChange={setForm} />
-
-          {formError ? (
-            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
-          ) : null}
-
-          {feedbackMessage ? (
-            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-              {feedbackMessage}
+          {editingFieldId ? (
+            <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+              Modo edição ativo. As alterações serão aplicadas ao campo selecionado.
             </p>
           ) : null}
+
+          <FieldForm form={form} isDisabled={isSubmitting} onChange={setForm} />
 
           <div className="flex flex-wrap gap-2">
             <Button disabled={isSubmitting} type="submit">
@@ -427,7 +430,7 @@ export function LeadFieldsPage() {
 
         {!isLoading && sortedFields.length === 0 ? (
           <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-6 text-center text-sm text-slate-600">
-            Nenhum campo personalizado configurado.
+            Nenhum campo personalizado cadastrado. Crie campos para enriquecer seus leads.
           </p>
         ) : null}
 

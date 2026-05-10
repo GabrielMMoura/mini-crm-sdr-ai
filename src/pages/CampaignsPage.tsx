@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { Textarea } from '../components/ui/Textarea'
+import { Toast } from '../components/ui/Toast'
 import { useCampaigns } from '../features/campaigns/hooks/useCampaigns'
 import type { Campaign, CreateCampaignInput, UpdateCampaignInput } from '../features/campaigns/types/campaign.types'
 import { usePipelineStages } from '../features/pipeline/hooks/usePipelineStages'
@@ -293,9 +295,31 @@ export function CampaignsPage() {
 
   return (
     <section className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-normal">Campanhas</h1>
-        <p className="mt-2 text-sm text-slate-600">Workspace atual: {currentWorkspace.name}</p>
+      <Toast message={formError} onClose={() => setFormError(null)} type="error" />
+      <Toast message={feedbackMessage} onClose={() => setFeedbackMessage(null)} type="success" />
+
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-normal">Campanhas</h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-600">
+            Estruture abordagens comerciais e prompts para geração de mensagens com IA.
+          </p>
+          <p className="mt-1 text-sm text-slate-500">Workspace atual: {currentWorkspace.name}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            className="inline-flex h-10 items-center justify-center rounded-md bg-white px-4 text-sm font-medium text-slate-950 ring-1 ring-slate-200 transition-colors hover:bg-slate-100"
+            to="/leads"
+          >
+            Ver leads
+          </Link>
+          <Link
+            className="inline-flex h-10 items-center justify-center rounded-md bg-white px-4 text-sm font-medium text-slate-950 ring-1 ring-slate-200 transition-colors hover:bg-slate-100"
+            to="/settings/ai"
+          >
+            Configurações de IA
+          </Link>
+        </div>
       </div>
 
       <Card className="space-y-5">
@@ -309,6 +333,12 @@ export function CampaignsPage() {
         </div>
 
         <form className="space-y-5" onSubmit={handleSubmit}>
+          {editingCampaignId ? (
+            <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+              Modo edição ativo. As alterações serão aplicadas à campanha selecionada.
+            </p>
+          ) : null}
+
           <CampaignFormFields
             form={form}
             isDisabled={isSubmitting || isStagesLoading}
@@ -321,16 +351,6 @@ export function CampaignsPage() {
           {stagesError ? (
             <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {stagesError}
-            </p>
-          ) : null}
-
-          {formError ? (
-            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
-          ) : null}
-
-          {feedbackMessage ? (
-            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-              {feedbackMessage}
             </p>
           ) : null}
 
@@ -372,7 +392,7 @@ export function CampaignsPage() {
 
         {!isCampaignsLoading && campaigns.length === 0 ? (
           <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-6 text-center text-sm text-slate-600">
-            Nenhuma campanha cadastrada ainda.
+            Nenhuma campanha cadastrada ainda. Crie uma campanha para gerar mensagens personalizadas com IA.
           </p>
         ) : null}
 

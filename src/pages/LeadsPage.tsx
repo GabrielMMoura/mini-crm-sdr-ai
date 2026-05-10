@@ -1,11 +1,13 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { Textarea } from '../components/ui/Textarea'
+import { Toast } from '../components/ui/Toast'
 import { useAuth } from '../features/auth/hooks/useAuth'
 import { useCampaigns } from '../features/campaigns/hooks/useCampaigns'
 import { LeadActivitiesPanel } from '../features/leads/components/LeadActivitiesPanel'
@@ -837,15 +839,56 @@ export function LeadsPage() {
 
   return (
     <section className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-normal">Leads</h1>
-        <p className="mt-2 text-sm text-slate-600">Workspace atual: {currentWorkspace.name}</p>
+      <Toast message={formError} onClose={() => setFormError(null)} type="error" />
+      <Toast message={feedbackMessage} onClose={() => setFeedbackMessage(null)} type="success" />
+
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-normal">Leads</h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-600">
+            Organize contatos, acompanhe etapas do funil e gere mensagens personalizadas.
+          </p>
+          <p className="mt-1 text-sm text-slate-500">Workspace atual: {currentWorkspace.name}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            className="inline-flex h-10 items-center justify-center rounded-md bg-white px-4 text-sm font-medium text-slate-950 ring-1 ring-slate-200 transition-colors hover:bg-slate-100"
+            to="/campaigns"
+          >
+            Nova campanha
+          </Link>
+          <Link
+            className="inline-flex h-10 items-center justify-center rounded-md bg-white px-4 text-sm font-medium text-slate-950 ring-1 ring-slate-200 transition-colors hover:bg-slate-100"
+            to="/settings/lead-fields"
+          >
+            Configurar campos
+          </Link>
+          <Link
+            className="inline-flex h-10 items-center justify-center rounded-md bg-white px-4 text-sm font-medium text-slate-950 ring-1 ring-slate-200 transition-colors hover:bg-slate-100"
+            to="/settings/pipeline-rules"
+          >
+            Regras do funil
+          </Link>
+        </div>
       </div>
 
       <Card className="space-y-5">
-        <div>
-          <h2 className="text-base font-semibold tracking-normal">Criar lead</h2>
-          <p className="mt-1 text-sm text-slate-600">Cadastro basico para iniciar a lista comercial.</p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold tracking-normal">Criar lead</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Cadastro básico para iniciar a lista comercial.
+            </p>
+          </div>
+          {editingLeadId ? (
+            <Button
+              className="bg-white text-slate-950 ring-1 ring-slate-200 hover:bg-slate-100"
+              disabled={isSubmitting}
+              onClick={cancelEditingLead}
+            >
+              Cancelar edição
+            </Button>
+          ) : null}
         </div>
 
         <form className="space-y-5" onSubmit={handleCreateLead}>
@@ -881,16 +924,6 @@ export function LeadsPage() {
             </p>
           ) : null}
 
-          {formError ? (
-            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>
-          ) : null}
-
-          {feedbackMessage ? (
-            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-              {feedbackMessage}
-            </p>
-          ) : null}
-
           <Button disabled={isSubmitting} type="submit">
             {isSubmitting ? 'Salvando...' : 'Criar lead'}
           </Button>
@@ -900,7 +933,7 @@ export function LeadsPage() {
       <Card className="space-y-4">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-base font-semibold tracking-normal">Lista de leads</h2>
+            <h2 className="text-base font-semibold tracking-normal">Leads cadastrados</h2>
             <p className="text-sm text-slate-600">
               Mostrando {filteredLeads.length} de {leads.length} leads
             </p>
@@ -982,7 +1015,7 @@ export function LeadsPage() {
 
         {!isLeadsLoading && leads.length === 0 ? (
           <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-6 text-center text-sm text-slate-600">
-            Voce ainda nao cadastrou nenhum lead.
+            Você ainda não cadastrou nenhum lead. Crie o primeiro lead para começar a organizar seu funil.
           </p>
         ) : null}
 
@@ -1001,6 +1034,12 @@ export function LeadsPage() {
               <div key={lead.id} className="rounded-lg border border-slate-200 bg-white p-4">
                 {isEditing ? (
                   <div className="space-y-4">
+                    <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
+                      <h3 className="text-sm font-semibold text-sky-950">Editar lead</h3>
+                      <p className="mt-1 text-sm text-sky-800">
+                        Você está editando {lead.name}. Use Cancelar edição para voltar ao modo de criação.
+                      </p>
+                    </div>
                     <LeadFormFields
                       customFields={customFields}
                       form={editForm}

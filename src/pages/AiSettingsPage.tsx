@@ -4,6 +4,7 @@ import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
+import { Toast } from '../components/ui/Toast'
 import { useAiSettings } from '../features/ai-settings/hooks/useAiSettings'
 
 const modelOptions = ['gpt-4o-mini', 'gpt-4.1-mini', 'gpt-4o']
@@ -67,6 +68,10 @@ export function AiSettingsPage() {
 
   return (
     <section className="space-y-6">
+      <Toast message={error} type="error" />
+      <Toast message={feedback} type="success" />
+      <Toast message={testResult} type={testResult?.includes('sucesso') ? 'success' : 'warning'} />
+
       <div>
         <h1 className="text-2xl font-semibold tracking-normal">Configurações de IA</h1>
         <p className="mt-2 text-sm text-slate-600">
@@ -125,22 +130,6 @@ export function AiSettingsPage() {
               Cole uma nova chave para salvar ou testar. O campo sempre fica vazio após salvar.
             </p>
           </div>
-
-          {error ? (
-            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
-          ) : null}
-
-          {feedback ? (
-            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-              {feedback}
-            </p>
-          ) : null}
-
-          {testResult ? (
-            <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              {testResult}
-            </p>
-          ) : null}
 
           <form className="space-y-4" onSubmit={(event) => void handleSave(event)}>
             <label className="space-y-2 text-sm font-medium text-slate-700" htmlFor="ai-api-key">
