@@ -29,8 +29,9 @@ https://mini-crm-sdr-ai-vercel.vercel.app
 ### IA
 
 - OpenAI API
-- Modelo configuravel via secret `OPENAI_MODEL`
-- Chave protegida via secret `OPENAI_API_KEY`
+- Configuracao de OpenAI API key por usuario em `/settings/ai`
+- Chaves criptografadas antes de serem salvas no banco
+- Geracao de mensagens usando a chave do usuario autenticado
 
 ### Outros
 
@@ -90,7 +91,25 @@ As regras de campos obrigatorios por etapa ficam em `pipeline_stages.required_fi
 
 ### Edge Function para IA
 
-A geracao de mensagens roda na Supabase Edge Function `generate-lead-messages`. O frontend chama a function autenticado, mas nunca acessa a chave da OpenAI. A chave fica em secrets do Supabase, configurada como `OPENAI_API_KEY`.
+A geracao de mensagens roda na Supabase Edge Function `generate-lead-messages`. O frontend chama a function autenticado, mas nunca acessa a chave OpenAI em texto puro.
+
+Cada usuario configura sua propria OpenAI API key em `/settings/ai`. A chave e enviada para a Edge Function `manage-user-llm-key`, criptografada com AES-GCM usando `LLM_KEY_ENCRYPTION_SECRET` e salva em `user_llm_settings`. Depois de salva, o frontend recebe apenas metadata segura, como os ultimos caracteres da chave, modelo configurado e status.
+
+`generate-lead-messages` busca a configuracao do usuario autenticado, descriptografa a chave dentro da Edge Function e usa o modelo salvo pelo usuario. `OPENAI_API_KEY` global nao e mais usada para geracao.
+
+## Configuracoes de IA por usuario
+
+Cada usuario autenticado gerencia sua propria OpenAI API key na pagina protegida `/settings/ai`.
+
+O fluxo de seguranca e:
+
+1. O usuario informa a key no formulario.
+2. O frontend envia a key apenas para a Edge Function `manage-user-llm-key`.
+3. A function criptografa a key antes de salvar em `public.user_llm_settings`.
+4. O frontend nunca recebe a key em texto puro depois de salvar.
+5. A geracao de mensagens usa a key configurada pelo usuario autenticado.
+
+O frontend exibe somente metadata segura: provider, ultimos caracteres da key, modelo, status e data de atualizacao.
 
 ### Persistencia das mensagens geradas
 
@@ -130,6 +149,7 @@ src/
       services/
         leadActivityService.ts
     messages/
+    ai-settings/
     pipeline/
     workspaces/
   lib/
@@ -142,8 +162,12 @@ src/
 supabase/
   migrations/
     007_lead_activities.sql
+    008_auto_create_pipeline_stages_for_workspaces.sql
+    009_backfill_missing_pipeline_stages.sql
+    010_user_llm_settings.sql
   functions/
     generate-lead-messages/
+    manage-user-llm-key/
 ```
 
 ### Pastas principais
@@ -154,6 +178,7 @@ supabase/
 - `src/features/pipeline`: etapas do funil, regras obrigatorias e validacoes de transicao.
 - `src/features/campaigns`: campanhas de abordagem.
 - `src/features/messages`: mensagens geradas, chamada da Edge Function e status das mensagens.
+- `src/features/ai-settings`: configuracao da OpenAI API key individual do usuario.
 - `src/features/dashboard`: metricas agregadas do workspace.
 - `supabase/migrations`: schema SQL, RLS, triggers e tabelas.
 - `supabase/functions`: Edge Functions.
@@ -214,6 +239,9 @@ As migrations ficam em `supabase/migrations`:
 - `005_campaigns.sql`: campanhas de abordagem.
 - `006_generated_messages.sql`: mensagens geradas por IA.
 - `007_lead_activities.sql`: historico de atividades do lead com RLS por workspace.
+- `008_auto_create_pipeline_stages_for_workspaces.sql`: cria etapas padrao do funil para novos workspaces.
+- `009_backfill_missing_pipeline_stages.sql`: completa etapas padrao ausentes em workspaces antigos.
+- `010_user_llm_settings.sql`: configuracoes de LLM por usuario com RLS.
 
 Para aplicar no projeto remoto:
 
@@ -227,28 +255,32 @@ Function implementada:
 
 ```txt
 generate-lead-messages
+manage-user-llm-key
 ```
 
-Arquivo:
+Arquivos:
 
 ```txt
 supabase/functions/generate-lead-messages/index.ts
+supabase/functions/manage-user-llm-key/index.ts
 ```
 
 Deploy:
 
 ```bash
 npx supabase functions deploy generate-lead-messages
+npx supabase functions deploy manage-user-llm-key
 ```
 
 Secrets necessarios:
 
 ```bash
-npx supabase secrets set OPENAI_API_KEY=...
-npx supabase secrets set OPENAI_MODEL=gpt-4o-mini
+npx supabase secrets set LLM_KEY_ENCRYPTION_SECRET=...
 ```
 
-O valor de `OPENAI_MODEL` pode ser alterado sem mudar o frontend.
+`LLM_KEY_ENCRYPTION_SECRET` e usado para criptografar e descriptografar as OpenAI API keys dos usuarios. Ele nao e uma chave OpenAI e nunca deve ser colocado no frontend.
+
+`OPENAI_API_KEY` global nao e requisito principal da aplicacao e nao e usada por `generate-lead-messages`. `OPENAI_MODEL`, se existir no projeto Supabase, fica apenas como configuracao legada/opcional; o modelo efetivo da geracao vem de `user_llm_settings.model`.
 
 ## Fluxos principais
 
@@ -268,13 +300,17 @@ O valor de `OPENAI_MODEL` pode ser alterado sem mudar o frontend.
 
 ### Campanhas e IA
 
-1. Usuario cria uma campanha ativa.
-2. Campanhas podem ter uma etapa gatilho configurada.
-3. Ao editar um lead, seleciona uma campanha para geracao manual.
-4. Frontend chama a Edge Function `generate-lead-messages`.
-5. A function busca lead e campanha, valida workspace, chama a OpenAI API e salva mensagens em `generated_messages`.
-6. Usuario pode copiar, arquivar ou marcar envio simulado.
-7. Envio simulado move o lead para `Tentando Contato`, respeitando regras obrigatorias da etapa.
+1. Usuario cria conta ou faz login.
+2. Usuario acessa `/settings/ai`.
+3. Usuario configura sua propria OpenAI API key.
+4. Usuario cria lead.
+5. Usuario cria campanha ativa.
+6. Campanhas podem ter uma etapa gatilho configurada.
+7. Ao editar um lead, seleciona uma campanha para geracao manual.
+8. Frontend chama a Edge Function `generate-lead-messages`.
+9. A function busca lead, campanha e configuracao OpenAI do usuario autenticado, valida workspace, chama a OpenAI API e salva mensagens em `generated_messages`.
+10. Usuario pode copiar, arquivar ou marcar envio simulado.
+11. Envio simulado move o lead para `Tentando Contato`, respeitando regras obrigatorias da etapa.
 
 ### Geracao automatica por etapa gatilho
 
@@ -282,7 +318,7 @@ O valor de `OPENAI_MODEL` pode ser alterado sem mudar o frontend.
 2. Usuario move um lead para a etapa gatilho.
 3. O frontend valida as regras de transicao antes da movimentacao.
 4. Apos a movimentacao bem-sucedida, o frontend gera mensagens automaticamente para as campanhas ativas vinculadas aquela etapa.
-5. A function busca lead e campanha, valida workspace, chama a OpenAI API e salva mensagens em `generated_messages`.
+5. A function busca lead, campanha e configuracao OpenAI do usuario autenticado, valida workspace, chama a OpenAI API e salva mensagens em `generated_messages`.
 6. Usuario verifica as mensagens geradas automaticamente no painel do lead.
 7. Usuario verifica o registro `message_generated` no historico de atividades.
 8. Se a etapa bloquear por campo obrigatorio, nenhuma mensagem automatica e gerada.
@@ -304,7 +340,9 @@ O dashboard mostra metricas do workspace atual:
 - A service role key nunca e usada no frontend.
 - RLS esta ativado nas tabelas de dominio, incluindo historico de atividades.
 - Dados sao isolados por `workspace_id` e `workspace_members`.
-- A chave da OpenAI fica somente em secrets da Supabase Edge Function.
+- As OpenAI API keys dos usuarios sao criptografadas com AES-GCM antes de serem salvas.
+- A chave de criptografia fica no secret `LLM_KEY_ENCRYPTION_SECRET`.
+- O frontend so mostra metadata segura, como os ultimos caracteres da key e o modelo configurado.
 - A Edge Function valida JWT, lead, campanha, workspace e membership antes de gerar mensagens.
 
 ## Diferenciais implementados
@@ -312,6 +350,7 @@ O dashboard mostra metricas do workspace atual:
 - Historico de atividades do lead.
 - Geracao automatica por etapa gatilho.
 - Historico de mensagens geradas.
+- Configuracao de OpenAI API key por usuario.
 - Regras de transicao por etapa.
 - RLS robusto por workspace.
 
@@ -344,9 +383,10 @@ O projeto cobre o fluxo principal da prova tecnica:
 2. Cadastra leads e campos personalizados.
 3. Organiza leads em funil Kanban.
 4. Configura regras por etapa.
-5. Cria campanhas.
-6. Configura campanha com etapa gatilho.
-7. Move lead para a etapa gatilho e gera mensagens automaticamente.
-8. Verifica historico de mensagens e atividades do lead.
-9. Copia ou simula envio de mensagens.
-10. Acompanha metricas basicas no dashboard.
+5. Configura sua OpenAI API key em `/settings/ai`.
+6. Cria campanhas.
+7. Configura campanha com etapa gatilho.
+8. Move lead para a etapa gatilho e gera mensagens automaticamente.
+9. Verifica historico de mensagens e atividades do lead.
+10. Copia ou simula envio de mensagens.
+11. Acompanha metricas basicas no dashboard.

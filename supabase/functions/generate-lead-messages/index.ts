@@ -60,10 +60,25 @@ type OpenAIResponse = {
   }>
 }
 
+type UserLlmSettings = {
+  encrypted_api_key: string
+  model: string | null
+  api_key_last4: string
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+class HttpError extends Error {
+  status: number
+
+  constructor(message: string, status: number, options?: ErrorOptions) {
+    super(message, options)
+    this.status = status
+  }
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -110,6 +125,43 @@ function getBearerToken(request: Request) {
   const match = authorizationHeader.match(/^Bearer\s+(.+)$/i)
 
   return match?.[1] ?? null
+}
+
+function sanitizeExternalMessage(message: string) {
+  return message.replace(/sk-[^\s.,)]+/g, '[redacted-api-key]')
+}
+
+function base64ToBytes(value: string) {
+  const binary = atob(value)
+  const bytes = new Uint8Array(binary.length)
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+
+  return bytes
+}
+
+async function deriveEncryptionKey(secret: string) {
+  const secretBytes = new TextEncoder().encode(secret)
+  const digest = await crypto.subtle.digest('SHA-256', secretBytes)
+
+  return crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['decrypt'])
+}
+
+async function decryptApiKey(encrypted: string, secret: string) {
+  const [encodedIv, encodedCiphertext] = encrypted.split(':')
+
+  if (!encodedIv || !encodedCiphertext) {
+    throw new Error('Stored API key has an invalid encrypted format.')
+  }
+
+  const key = await deriveEncryptionKey(secret)
+  const iv = base64ToBytes(encodedIv)
+  const ciphertext = base64ToBytes(encodedCiphertext)
+  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext)
+
+  return new TextDecoder().decode(plaintext)
 }
 
 function buildLeadSnapshot(lead: Lead) {
@@ -243,9 +295,7 @@ function parseGeneratedMessages(response: OpenAIResponse) {
   return messages
 }
 
-async function generateWithOpenAI(prompt: string, variationCount: number) {
-  const openAiApiKey = getRequiredEnv('OPENAI_API_KEY')
-  const model = Deno.env.get('OPENAI_MODEL') ?? 'gpt-4o-mini'
+async function generateWithOpenAI(prompt: string, variationCount: number, openAiApiKey: string, model: string) {
   const abortController = new AbortController()
   const timeoutId = setTimeout(() => abortController.abort(), 30000)
 
@@ -288,8 +338,8 @@ async function generateWithOpenAI(prompt: string, variationCount: number) {
     })
 
     if (!response.ok) {
-      const errorBody = await response.text()
-      throw new Error(`OpenAI request failed: ${response.status} ${errorBody}`)
+      const errorBody = sanitizeExternalMessage(await response.text())
+      throw new HttpError(`OpenAI request failed: ${response.status} ${errorBody}`, 502)
     }
 
     const responseBody = (await response.json()) as OpenAIResponse
@@ -395,10 +445,60 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: 'User is not a member of this workspace.' }, 403)
     }
 
+    const encryptionSecret = Deno.env.get('LLM_KEY_ENCRYPTION_SECRET')
+
+    if (!encryptionSecret) {
+      return jsonResponse({ error: 'Configuração de criptografia ausente.' }, 500)
+    }
+
+    const { data: llmSettings, error: llmSettingsError } = await supabase
+      .from('user_llm_settings')
+      .select('encrypted_api_key, model, api_key_last4')
+      .eq('user_id', user.id)
+      .eq('provider', 'openai')
+      .eq('is_configured', true)
+      .maybeSingle<UserLlmSettings>()
+
+    if (llmSettingsError) {
+      throw new Error(`Could not load user OpenAI settings: ${llmSettingsError.message}`)
+    }
+
+    if (!llmSettings) {
+      throw new HttpError(
+        'OpenAI API key não configurada. Configure sua chave nas configurações de IA antes de gerar mensagens.',
+        400,
+      )
+    }
+
+    if (!llmSettings.encrypted_api_key) {
+      throw new HttpError(
+        'OpenAI API key não configurada. Configure sua chave nas configurações de IA antes de gerar mensagens.',
+        400,
+      )
+    }
+
+    const model = llmSettings.model?.trim() || 'gpt-4o-mini'
+    let userOpenAiApiKey: string
+
+    try {
+      userOpenAiApiKey = await decryptApiKey(llmSettings.encrypted_api_key, encryptionSecret)
+    } catch (error) {
+      throw new HttpError('Não foi possível descriptografar a OpenAI API key configurada.', 500, {
+        cause: error,
+      })
+    }
+
+    if (!userOpenAiApiKey) {
+      throw new HttpError(
+        'OpenAI API key não configurada. Configure sua chave nas configurações de IA antes de gerar mensagens.',
+        400,
+      )
+    }
+
     const prompt = buildPrompt(lead, campaign, variationCount)
     const leadSnapshot = buildLeadSnapshot(lead)
     const campaignSnapshot = buildCampaignSnapshot(campaign)
-    const { model, messages } = await generateWithOpenAI(prompt, variationCount)
+    const { messages } = await generateWithOpenAI(prompt, variationCount, userOpenAiApiKey, model)
 
     if (messages.length !== variationCount) {
       throw new Error('OpenAI response did not return the requested number of messages.')
@@ -433,7 +533,8 @@ Deno.serve(async (request) => {
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unexpected error.'
+    const status = error instanceof HttpError ? error.status : 500
 
-    return jsonResponse({ error: message }, 500)
+    return jsonResponse({ error: sanitizeExternalMessage(message) }, status)
   }
 })

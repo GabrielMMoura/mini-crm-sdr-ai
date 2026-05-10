@@ -9,6 +9,7 @@ const navigationItems = [
   { label: 'Campanhas', to: '/campaigns' },
   { label: 'Campos de Leads', to: '/settings/lead-fields' },
   { label: 'Regras do Funil', to: '/settings/pipeline-rules' },
+  { label: 'Configurações de IA', to: '/settings/ai' },
 ]
 
 export function AppLayout() {

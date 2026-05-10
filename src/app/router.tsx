@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 
 import { AppLayout } from '../components/layout/AppLayout'
 import { ProtectedRoute } from '../components/layout/ProtectedRoute'
+import { AiSettingsPage } from '../pages/AiSettingsPage'
 import { CampaignsPage } from '../pages/CampaignsPage'
 import { DashboardPage } from '../pages/DashboardPage'
 import { LeadFieldsPage } from '../pages/LeadFieldsPage'
@@ -41,6 +42,10 @@ export const router = createBrowserRouter([
           {
             path: 'settings/pipeline-rules',
             element: <PipelineRulesPage />,
+          },
+          {
+            path: 'settings/ai',
+            element: <AiSettingsPage />,
           },
         ],
       },
